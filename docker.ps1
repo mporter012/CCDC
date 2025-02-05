@@ -36,11 +36,14 @@ if ([System.IO.File]::Exists($path)) {
 		$dockerVersion = docker --version
 		if ($dockerVersion){
 			Write-Host "Docker is installed: $dockerVersion"
+			
+			#Remove Docker Install Script
+			Remove-Item -Path $fullPath -Force
 		}else{
 			Write-Host "Docker is not installed"
 			Exit
-	}
-	catch{
+		}
+	}catch{
 		Write-Host "Docker is not installed or not found in the system path"
 		Exit
 	}
