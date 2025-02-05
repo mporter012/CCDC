@@ -23,12 +23,27 @@ if (Get-Module -ListAvailable -Name DockerMsftProvider) {
 Write-Host "Downloading Docker Install Script"
 Invoke-WebRequest -UseBasicParsing "https://raw.githubusercontent.com/microsoft/Windows-Containers/Main/helpful_tools/Install-DockerCE/install-docker-ce.ps1" -o install-docker-ce.ps1
 $path = "C:\Users\Administrator"
+$script = "install-docker-ce.ps1"
 if ([System.IO.File]::Exists($path)) {
 	Write-Host "Docker Script Installed"
 	
 	#Execute the Script
-	C:\Users\Administrator\install-docker-ce.ps1
+	$fullpath = Join-Path -Path $path -ChildPath $script
+	& $fullPath
 	
+	#Verify Installation
+	try {
+		$dockerVersion = docker --version
+		if ($dockerVersion){
+			Write-Host "Docker is installed: $dockerVersion"
+		}else{
+			Write-Host "Docker is not installed"
+			Exit
+	}
+	catch{
+		Write-Host "Docker is not installed or not found in the system path"
+		Exit
+	}
 } else {
 	Write-Host "Docker Script Installation Failed"
 	Exit
