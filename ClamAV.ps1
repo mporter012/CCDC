@@ -34,7 +34,7 @@ $clamDatabaseConfigPath = "C:\Program Files\ClamAV\clamd.conf"
 # If freshclam.conf does not exist, re-creates the file from the config examples
 if (-not (Test-Path $freshClamConfigPath)){
     Write-Host "FreshClam Config Not Found. Generating New Config"
-    copy C:\Program Files\conf_exmaples\freshclam.conf.sample $freshClamConfigPath
+    Copy-Item "C:\Program Files\ClamAV\conf_examples\freshclam.conf.sample" $freshClamConfigPath
     Write-Host "Config Generated."
     #Write-Host "Delete The Line That Says "Example" on Line 9. Then Save & Continue" -ForegroundColor Yellow
     #write-exe .\freshclam.conf -Wait
@@ -62,8 +62,8 @@ if (-not (Test-Path $freshClamConfigPath)){
 
 # If clamd.conf does not exist, re-creates the file from the config samples
 if (-not (Test-Path $clamDatabaseConfigPath)){
-    Write-Host "FreshClam Config Not Found. Generating New Config"
-    Copy-Item C:\Program Files\conf_exmaples\clamd.conf.sample $clamDatabaseConfigPath
+    Write-Host "clamd Config Not Found. Generating New Config"
+    Copy-Item "C:\Program Files\ClamAV\conf_examples\clamd.conf.sample" $clamDatabaseConfigPath
     Write-Host "Config Generated."
     Write-Host "Modifiying the clamd.conf file..." -ForegroundColor Green
     $fileContent = Get-Content $clamDatabaseConfigPath
@@ -108,8 +108,10 @@ if (-not (Test-Path $logFile)){
 }
 
 # Run freshclam.exe
+$freshClam
 Write-Host "Running freshclam.exe"
-Start-Process "C:\Program Files\ClamAV\freshclam.exe" -Wait
+Start-Process "$freshClam" -Wait
+Write-Host $freshClam
 
 # Run an automatic scan
-# & "C:\Program Files\ClamAV\clamscan.exe" -r "C:\Users\Administrator\Documents\ClamAV.txt"
+& "C:\Program Files\ClamAV\clamscan.exe" -r "C:\" | Tee-Object -FilePath "$env:USERPROFILE\Administrator\Documents\full_scan_results.txt" | Select-String -Pattern "FOUND" | Tee-Object -FilePath "$env:USERPROFILE\Administrator\Documents\detection_results.txt" -ErrorAction SilentlyContinue
