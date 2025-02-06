@@ -24,12 +24,6 @@ Start-Sleep -Seconds 3
 
 Start-Process -FilePath $installerPath -Wait
 
-# IF CLAMAV SERVICE DOESN'T SETUP, UNCOMMENT BELOW
-<#
-New-Service -Name "ClamAV" -Binary "C:\Program Files\ClamAV\clamad.exe" -StartupType Automatic
-Start-Service -Name "ClamAV"
-#>
-
 # Update ClamAV Virus Database
 Write-Host "Updating ClamAV Virus Database"
 
