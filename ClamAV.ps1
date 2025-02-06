@@ -69,10 +69,26 @@ if (-not (Test-Path $clamDatabaseConfigPath)){
     $fileContent = Get-Content $clamDatabaseConfigPath
     $fileContent = $fileContent | ForEach-Object {
         if ($_ -match "Example") {
-            $null
+            $null  # Skip lines with "Example"
+        }
+        # Uncomment specific logging options by removing the '#' from the beginning
+        elseif ($_ -match "^#LogTime") {
+            $_ -replace "^#LogTime", "LogTime"
+        }
+        elseif ($_ -match "^#LogVerbose") {
+            $_ -replace "^#LogVerbose", "LogVerbose"
+        }
+        elseif ($_ -match "^#ExtendedDetectionInfo") {
+            $_ -replace "^#ExtendedDetectionInfo", "ExtendedDetectionInfo"
+        }
+        elseif ($_ -match "^#DetectPUA") {
+            $_ -replace "^#DetectPUA", "DetectPUA"
+        }
+        elseif ($_ -match "^#HeuristicAlerts") {
+            $_ -replace "^#HeuristicAlerts", "HeuristicAlerts"
         }
         else {
-            $_
+            $_  # Keep all other lines unchanged
         }
     }
 
@@ -85,10 +101,15 @@ $user = "Administrator"
 if (-not (Test-Path $logFile)){
     New-Item -Path $logFile -ItemType File -Force | Out-Null
     if (Test-Path $logFile){
-        Write-Host "Log File Created Successfully at $logFile" -BackgroundColor Green
+        Write-Host "Log File Created Successfully at $logFile" -ForegroundColor Green
     }else{
-        Write-Host "Log File Failed Creation" -BackgroundColor Red
+        Write-Host "Log File Failed Creation" -ForegroundColor Red
     }
 }
+
+# Run freshclam.exe
+Write-Host "Running freshclam.exe"
+Start-Process "C:\Program Files\ClamAV\freshclam.exe" -Wait
+
 # Run an automatic scan
 # & "C:\Program Files\ClamAV\clamscan.exe" -r "C:\Users\Administrator\Documents\ClamAV.txt"
