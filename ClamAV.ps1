@@ -12,7 +12,7 @@ Write-Host "Disabled progress bar"
 
 # Install ClamAV
 $installerPath = "$env:USERPROFILE\Downloads\clamav_installer.msi"
-if (-not ($installerPath)){
+if (-not (Test-Path $installerPath)){
     Write-Host "Downloading Installer"
     $clamavInstallerUrl = "https://www.clamav.net/downloads/production/clamav-0.105.2.win.x64.msi"
     Invoke-WebRequest -Uri $clamavInstallerUrl -OutFile $InstallerPath
@@ -32,7 +32,7 @@ $freshClamConfigPath = "C:\Program Files\ClamAV\freshclam.conf"
 $clamDatabaseConfigPath = "C:\Program Files\ClamAV\clamd.conf"
 
 # If freshclam.conf does not exist, re-creates the file from the config examples
-if (-not (TestPath $freshClamConfigPath)){
+if (-not (Test-Path $freshClamConfigPath)){
     Write-Host "FreshClam Config Not Found. Generating New Config"
     copy C:\Program Files\conf_exmaples\freshclam.conf.sample $freshClamConfigPath
     Write-Host "Config Generated."
