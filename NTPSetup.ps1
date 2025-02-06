@@ -10,12 +10,11 @@ if (-Not $elevated) {
 w32tm /config /syncfromflags:manual /manualpeerlist: /manualpeerlist: "[placeholder]" /update
 
 # Restart the w32time service
-$status = (Get-Service w32time).Status
 Write-Host "Stopping w32time Service"
 Stop-Service w32time
-Write-Host "w32time Service Status: $status"
+Write-Host "w32time Service Status: $(Get-Service w32time).Status"
 Start-Sleep -Seconds 1
 
 Write-Host "Starting w32time Service"
 Start-Service w32time
-Write-Host "w32time Service Status: $status"
+Write-Host "w32time Service Status: $(Get-Service w32time).Status"
