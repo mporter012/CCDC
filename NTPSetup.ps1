@@ -4,18 +4,17 @@ if (-Not $elevated) {
     Write-Host "Please run this script as an Administrator!" -ForegroundColor Red
     Exit
 }
+$currentNTPServer = (w32tm /dumpreg /subkey:parameters).NtpServer
+$updateToNameServer = "time-a-b.nist.gov"
+
+Write-Host "Current NTPServer: $currentNTPServer"
 
 # Update the NTP to point to the internal Debian machine
 # Update "[placeholder]" to point to the NTP NameServer you want the NTP to point to
-w32tm /config /syncfromflags:manual /manualpeerlist: /manualpeerlist: "[placeholder]" /update
+w32tm /config /syncfromflags:manual /manualpeerlist: /manualpeerlist: "$updateToNameServer" /update
 
 # Restart the w32time service
-Write-Host "Stopping w32time Service"
-Stop-Service w32time
-Start-Sleep -Seconds 2
-Write-Host "w32time Service Status: $(Get-Service w32time).Status"
+Restart-Service w32time
+Write-Host "w32time Service Restarted"
 
-Write-Host "Starting w32time Service"
-Start-Service w32time
-Start-Sleep -Seconds 2
-Write-Host "w32time Service Status: $(Get-Service w32time).Status"
+Write-Host "Current NTPServer: $currentNTPServer"
