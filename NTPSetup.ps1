@@ -12,9 +12,10 @@ w32tm /config /syncfromflags:manual /manualpeerlist: /manualpeerlist: "[placehol
 # Restart the w32time service
 Write-Host "Stopping w32time Service"
 Stop-Service w32time
+Start-Sleep -Seconds 2
 Write-Host "w32time Service Status: $(Get-Service w32time).Status"
-Start-Sleep -Seconds 1
 
 Write-Host "Starting w32time Service"
 Start-Service w32time
+Start-Sleep -Seconds 2
 Write-Host "w32time Service Status: $(Get-Service w32time).Status"
