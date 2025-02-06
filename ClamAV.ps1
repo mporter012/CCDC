@@ -113,18 +113,6 @@ Write-Host "Running freshclam.exe"
 Start-Process "$freshClam" -Wait
 Write-Host "Directories Updated" -ForegroundColor Green
 
-# Set up Scheduled Task for running the scan
-$Action = New-ScheduledTaskAction -Execute 'Powershell.exe' -Argument '-Command "& "C:\Program Files\ClamAV\clamscan.exe" -r "C:\" 2>$null | Tee-Object -FilePath "$env:USERPROFILE\Documents\full_scan_results.txt" | Select-String -Pattern "FOUND" 2>$null | Tee-Object -FilePath "$env:USERPROFILE\Documents\detection_results.txt" -ErrorAction SilentlyContinue"'
+# Run a ClamScan
+C:\Program Files\ClamAV\clamscan.exe" -r "C:\" 2>$null | Tee-Object -FilePath "$env:USERPROFILE\Documents\full_scan_results.txt" | Select-String -Pattern "FOUND" 2>$null | Tee-Object -FilePath "$env:USERPROFILE\Documents\detection_results.txt" -ErrorAction SilentlyContinue
 
-# Define the trigger to start the task immediately and repeat every hour
-$Trigger = New-ScheduledTaskTrigger -At (Get-Date) -RepetitionInterval (New-TimeSpan -Hours 1) -RepetitionDuration (New-TimeSpan -Days 1)
-
-# Define the task settings
-$TaskSettings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteriesOnly $true -DontStopIfGoingOnBatteries $true
-
-# Register the task
-$TaskName = 'HourlyClamScan'
-Register-ScheduledTask -Action $Action -Trigger $Trigger -TaskName $TaskName -Settings $TaskSettings -User "SYSTEM" -RunLevel Highest
-
-# Run an automatic scan immediately
-Start-ScheduledTask -TaskName $TaskName
