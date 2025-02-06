@@ -4,7 +4,7 @@ if (-Not $elevated) {
     Write-Host "Please run this script as an Administrator!" -ForegroundColor Red
     Exit
 }
-$currentNTPServer = (w32tm /dumpreg /subkey:parameters).NtpServer
+$currentNTPServer = (Get-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Services\W32Time\Parameters").NtpServer
 $updateToNameServer = "time-a-b.nist.gov"
 
 Write-Host "Current NTPServer: $currentNTPServer"
