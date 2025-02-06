@@ -11,6 +11,7 @@ $ProgressPreference = 'SilentlyContinue'
 Write-Host "Disabled progress bar"
 
 # Install ClamAV
+Write-Host "Downloading Installer"
 $clamavInstallerUrl = "https://www.clamav.net/downloads/production/clamav-0.105.2.win.x64.msi"
 $installerPath = "$env:USERPROFILE\Downloads\clamav_installer.msi"
 Invoke-WebRequest -Uri $clamavInstallerUrl -OutFile $InstallerPath
@@ -36,12 +37,10 @@ $freshClamConfigPath = "C:\Program Files\ClamAV\freshclam.conf"
 $clamDatabaseConfigPath = "C:\Program Files\ClamAV\clamd.conf"
 
 # If freshclam.conf does not exist, re-creates the file from the config examples
-if (-not (TestPath $freshClamConfigPath)){
+if (-not (Test-Path $freshClamConfigPath)){
     Write-Host "FreshClam Config Not Found. Generating New Config"
-    copy C:\Program Files\conf_exmaples\freshclam.conf.sample $freshClamConfigPath
+    copy "C:\Program Files\ClamAV\conf_examples\freshclam.conf.sample" $freshClamConfigPath
     Write-Host "Config Generated."
-    #Write-Host "Delete The Line That Says "Example" on Line 9. Then Save & Continue" -ForegroundColor Yellow
-    #write-exe .\freshclam.conf -Wait
     Write-Host "Modifying the freshclam.conf file..." -ForegroundColor Green
     $fileContent = Get-Content $freshClamConfigPath
     #Remove the line containing "Example" and uncomment the UpdateLogFile line
@@ -51,8 +50,8 @@ if (-not (TestPath $freshClamConfigPath)){
             $null #Exclude this line
         }
         # Uncomment the UpdateLogfile line
-        elseif ($_ -match "^#\s*UpdateLogFile") {
-            $_ -replace "^#\s*", ""
+        elseif ($_ -match "^\s*#\s*UpdateLogFile") {
+            $_ -replace "^\s*#\s*", ""
         }
         else {
             $_
@@ -65,12 +64,27 @@ if (-not (TestPath $freshClamConfigPath)){
 }
 
 # If clamd.conf does not exist, re-creates the file from the config samples
-if (-not (TestPath $clamDatabaseConfigPath)){
-    Write-Host "FreshClam Config Not Found. Generating New Config"
-    copy C:\Program Files\conf_exmaples\clamd.conf.sample $clamDatabaseConfigPath
-    Write-Host "Config Generated. Opening Config"
-    Write-Host "Delete The Line That Says "Example" on Line 9. Then Save & Continue" -ForegroundColor Yellow
-    write-exe .\clamd.conf -Wait
+if (-not (Test-Path $clamDatabaseConfigPath)){
+    Write-Host "clamd.conf Config Not Found. Generating New Config"
+    copy "C:\Program Files\ClamAV\conf_examples\clamd.conf.sample" $clamDatabaseConfigPath
+    Write-Host "Config Generated."
+    Write-Host "Modifying the clamd.conf file..." -ForegroundColor Green
+    $fileContent = Get-Content $clamDatabaseConfigPath
+    #Remove the line containing "Example" and uncomment the UpdateLogFile line
+    $fileContent = $fileContent | ForEach-Object {
+        #Remove the line containing 'Example'
+        if ($_ -match "Example"){
+            $null #Exclude this line
+        }
+	else {
+	    $_
+ 	}
+    }
+    #Write the modified content back to the file
+    $fileContent | Set-Content $clamDatabaseConfigPath
+
+    Write-Host "clamd.conf has been modified successfully." -ForegroundColor Green
+
 }
 
 # Run an automatic scan
