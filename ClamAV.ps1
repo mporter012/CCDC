@@ -114,5 +114,5 @@ Start-Process "$freshClam" -Wait
 Write-Host "Directories Updated" -ForegroundColor Green
 
 # Run a ClamScan
-C:\Program Files\ClamAV\clamscan.exe" -r "C:\" 2>$null | Tee-Object -FilePath "$env:USERPROFILE\Documents\full_scan_results.txt" | Select-String -Pattern "FOUND" 2>$null | Tee-Object -FilePath "$env:USERPROFILE\Documents\detection_results.txt" -ErrorAction SilentlyContinue
+& "C:\Program Files\ClamAV\clamscan.exe" -r "C:\" 2>$null | Tee-Object -FilePath "$env:USERPROFILE\Documents\full_scan_results.txt" | Select-String -Pattern "FOUND" 2>$null | Tee-Object -FilePath "$env:USERPROFILE\Documents\detection_results.txt" -ErrorAction SilentlyContinue
 
