@@ -7,28 +7,37 @@ assignees: ''
 
 ---
 
-A * symbol, represents a **required** question
+> **Note:** Fields marked with a **★** are required.  
 
-**\*Describe the bug**
-A clear and concise description of what the bug is.
+## **★ Describe the Bug**  
+_A clear and concise description of the issue._  
 
-**To Reproduce**
-Please provide steps to reproduce your issue if at all possible.
+## **Steps to Reproduce**  
+_Provide step-by-step instructions to replicate the issue._  
 
-**Expected behavior**
-A clear and concise description of what you expected to happen.
+1. …  
+2. …  
+3. …  
 
-**\*Screenshots**
-If applicable, add screenshots to help explain your problem.
+## **Expected Behavior**  
+_A clear and concise description of what you expected to happen._  
 
-**\*Desktop:**
- - OS: [e.g. Windows, Linux, MacOS]
- - OS Version: [e.g. Windows 8.1, Ubuntu 20.04 LTS, macOS Monterey (12.0)
+## **★ Screenshots**  
+_If applicable, add screenshots to help illustrate the problem._  
 
-**\*Hardware:**
- - Processor/CPU: 
- - RAM: 
- - GPU/Graphics Card:
+## **★ System Information**  
 
-**Additional context**
-Add any other context about the problem here.
+### **★ Desktop**  
+- **Operating System:** _(e.g., Windows, Linux, macOS)_  
+- **OS Version:** _(e.g., Windows 8.1, Ubuntu 20.04 LTS, macOS Monterey 12.0)_  
+
+### **★ Hardware**  
+- **Processor (CPU):**  
+- **Memory (RAM):**  
+- **Graphics Card (GPU):**  
+
+## **Additional Context**  
+_Add any other relevant details about the issue._  
+
+## **Log File (If Applicable)**  
+_If the issue involves a crash, provide the full log file from start to end._

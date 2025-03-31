@@ -7,14 +7,20 @@ assignees: ''
 
 ---
 
-**Is your feature request related to a problem? Please describe.**
-A clear and concise description of what the problem is. Ex. I'm always frustrated when [...]
+> **Note:** Please provide as much detail as possible to help us understand and consider your request.  
 
-**Describe the solution you'd like**
-A clear and concise description of what you want to happen.
+## **Problem Description**  
+_Is your feature request related to a problem? If so, describe the issue._  
+_Example: "I'm always frustrated when..."_  
 
-**Describe alternatives you've considered**
-A clear and concise description of any alternative solutions or features you've considered.
+## **Proposed Solution**  
+_A clear and concise description of the feature you’d like to see implemented._  
 
-**Additional context**
-Add any other context or screenshots about the feature request here.
+## **Alternative Solutions**  
+_Have you considered any alternative features or workarounds? If so, describe them._  
+
+## **Mod Compatibility**  
+_Does this feature need to interact with other mods? If so, specify which mods and how they should work together._  
+
+## **Additional Context**  
+_Include any extra details, potential use cases, or screenshots/mockups if applicable._
