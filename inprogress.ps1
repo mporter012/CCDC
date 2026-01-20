@@ -258,7 +258,6 @@ foreach ($Account in $AccountsToDisable) {
     }
 }
 
-# Reset Password for Sensitive Accounts
 # ----
 # Reset Passwords for Sensitive Accounts
 # ----
@@ -322,7 +321,7 @@ try {
 }
 
 # ----
-# Disable legacy services: NetBIOS, Telnet, and SMBv1
+# Disable legacy services: NetBIOS, Telnet, SMBv1, and LLMNR
 # ----
 
 try {
@@ -359,6 +358,31 @@ try {
     Write-Status "Failed to disable SMBv1: $_" "Warning"
 }
 
+try {
+    $LLMNRReg = "HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\DNSClient"
+    if (-not (Test-Path $LLMNRReg)) {
+        New-Item -Path $LLMNRReg -Force | Out-Null
+    }
+    Set-ItemProperty -Path $LLMNRReg -Name "EnableMulticast" -Value 0 -Force
+    Write-Status "LLMNR (Link-Local Multicast Name Resolution) disabled" "Success"
+} catch {
+    Write-Status "Failed to disable LLMNR: $_" "Warning"
+}
 
+# ----
+# Set UAC to Maximum Security
+# ----
+
+try {
+    $UACReg = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System"
+
+    Set-ItemProperty $UACReg EnableLUA 1 -Force
+    Set-ItemProperty $UACReg ConsentPromptBehaviorAdmin 2 -Force
+    Set-ItemProperty $UACReg PromptOnSecureDesktop 1 -Force
+
+    Write-Status "UAC set to maximum security level" "Success"
+} catch {
+    Write-Status "Failed to configure UAC: $_" "Error"
+}
 
 Stop-Transcript
