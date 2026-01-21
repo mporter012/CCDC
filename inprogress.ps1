@@ -8,7 +8,7 @@
 # Parameters
 # ----
 $DSRMPassword = "!Changeme123"
-
+$WazuhManagerIP = "192.168.56.10" # Ensure that this is the IP of Splunk
 
 # ----
 # Logging
@@ -42,6 +42,18 @@ function Write-Status {
     "Error" {Write-Host "[ERROR] $Message" -ForegroundColor Red}
     default {Write-Host "[INFO] $Message"}
  }
+}
+# ----
+# Detects Joined Domain
+# ----
+$DomainJoined = $false
+if ((Get-CimInstance Win32_ComputerSystem).PartOfDomain) {
+    $Domain = (Get-CimInstance Win32_ComputerSystem).Domain
+    $SysVol = "\\$Domain\SYSVOL\$Domain"
+    Write-Status "Domain '$Domain' Detected" "Success"
+    $DomainJoined = $true
+} else {
+    Write-Status "Machine is not domain-joined" "Warning"
 }
 
 # ----
@@ -404,6 +416,54 @@ try {
     Write-Status "UAC set to maximum security level" "Success"
 } catch {
     Write-Status "Failed to configure UAC: $_" "Error"
+}
+
+# ----
+# Wazuh Agent Deployment
+# ----
+if ($DomainJoined) {
+
+    Write-Status "Starting Wazuh Agent deployment check" "Info"
+
+    $WazuhServiceName = "WazuhSvc"
+    $InstallerPath   = "$Sysvol\Software\Wazuh\wazuh-agent-4.14.2-1.msi"
+    $WazuhService = Get-Service -Name $WazuhServiceName -ErrorAction SilentlyContinue
+    if ($WazuhService) {
+        if ($WazuhService.Status -ne "Running") {
+            Write-Status "Wazuh service not running, attempting to start" "Warning"
+            Start-Service $WazuhServiceName -ErrorAction SilentlyContinue
+            Start-Sleep -Seconds 5
+            if ($WazuhService.Status -ne "Running") {
+                Write-Status "Wazuh agent installed and service successfully started" "Success"
+            } else {
+                Write-Status "Wazuh agent installed but Failed to start Wazuh service" "Error"
+            }
+        } else {
+            Write-Status "Wazuh Agent already installed and running" "Success"
+        }
+    } else {
+        if (-not (Test-Path $InstallerPath)) {
+            Write-Status "Wazuh Agent installer not found at $InstallerPath" "Error"
+        } else {
+            Write-Status "Installing Wazuh Agent from SYSVOL" "Info"
+            $InstallArgs = "/i `"$InstallerPath`" /q WAZUH_MANAGER=`"$WazuhManagerIP`""
+            $InstallProc = Start-Process -FilePath "msiexec.exe" -ArgumentList $InstallArgs -Wait -PassThru
+            if ($InstallProc.ExitCode -eq 0) {
+                Write-Status "Wazuh Agent installed successfully" "Success"
+            } else {
+                Write-Status "Wazuh Agent installation failed with exit code $($InstallProc.ExitCode)" "Error"
+            }
+            Start-Sleep -Seconds 5
+            if (Get-Service -Name $WazuhServiceName -ErrorAction SilentlyContinue) {
+                Write-Status "Started Wazuh" "Success"
+                Start-Service $WazuhServiceName -ErrorAction SilentlyContinue
+            } else {
+                Write-Status "Wazuh service not detected after install" "Error"
+            }
+        }
+    }
+} else {
+    Write-Status "Skipping Wazuh Deployment. Not Domain Joined" "Warning"
 }
 
 # ============================================================
