@@ -426,7 +426,7 @@ if ($DomainJoined) {
     Write-Status "Starting Wazuh Agent deployment check" "Info"
 
     $WazuhServiceName = "WazuhSvc"
-    $InstallerPath   = "$Sysvol\Software\Wazuh\wazuh-agent-4.14.2-1.msi"
+    $InstallerPath   = "$Sysvol\Software\wazuh-agent-4.14.2-1.msi"
     $WazuhService = Get-Service -Name $WazuhServiceName -ErrorAction SilentlyContinue
     if ($WazuhService) {
         if ($WazuhService.Status -ne "Running") {
