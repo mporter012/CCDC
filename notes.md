@@ -1,10 +1,45 @@
+
 # Scripts
-- [ ] Audit (AD & Non-AD)
+- [ ] Make a "launcher" for scripts that will run all the scripts with the correct execution policy
+- [ ] Make a script that will run on the AD/DNS server that will run and push scripts for initial hardening to all other windows machines
+
+- [x] Audit (AD & Non-AD)
+	- [ ] Make a scheduled task that audits the system every 30 minutes to an hour
+	- [x] Audit MAC Addresses
+	- [x] Audit ARP cache
+	- [x] Audit active sessions
+	- [x] Audit file-sharing
+	- [x] Audit hosts file
+	- [x] Audit Scheduled Tasks
 - [ ] Installing & Running ClamAV
-- [ ] Basic hardening (AD & Non-AD)
-- [ ] Installing the Wazuh Agent
+	- [ ] Make a scheduled task that runs the script every 30 minutes to an hour
+	- [ ] Have a popup be made for detections
+- [x] Basic hardening (AD & Non-AD)
+- [ ] Installing and deploy the Wazuh Agent
 - [ ] Getting Inventory
-- [ ] Changing login banner
+- [x] Changing login banner
+- [ ] Add end-to-end hardening
+- [x] Change DSRM password
+- [ ] Research DeepBlue CLI
+- [x] Raise UAC level
+- [ ] Change Firewall Rules
+- [ ] 
+
+# Scripts in Progress
+## Basic Hardening (Non-AD)
+### Accounts / Permissions
+- [ ] Disables default guest account
+- [ ] Disables default administrator account
+### Firewall
+- [ ] Enable Windows Defender Firewall
+- [ ] Restrict inbound rules to only required services
+- [ ] Disable Telnet
+- [ ] Disable SMBv1
+- [ ] Enable logging for failed and successful logins
+### Security Policies & Audit
+- [ ] Enforce password policies
+- [ ] Configure account lockout policy
+- [ ] Enable Audit Policy for logon events, account management, and policy changes
 
 # Things to Research
 - How to allow the Wazuh Manager (on Splunk) to communicate with the agents under the cisco firewall
@@ -117,13 +152,13 @@ Recommendations
 | Outbound  | DNS                       | UDP/TCP 53           | Internal DNS          | Internal            | Resolve mail domains   |
 | Outbound  | Wazuh Agent Communication | TCP 1514 / TCP 55000 | Splunk/Wazuh Manager  | Internal            | Send logs and alerts   |
 ### Webmail (Fedora 42)
-|Direction|Service|Protocol / Port|Source / Destination|Internal / External|Notes|
-|---|---|---|---|---|---|
-|Inbound|HTTP / HTTPS|TCP 80 / 443|Internal users|Internal|Webmail interface|
-|Outbound|POP3 / SMTP|TCP 110 / 587|Email Server|Internal|Email delivery and retrieval|
-|Outbound|DNS|UDP/TCP 53|Internal DNS|Internal|Service name resolution|
-|Outbound|Wazuh Agent Communication|TCP 1514 / TCP 55000|Splunk/Wazuh Manager|Internal|Send logs and alerts|
-### ### Splunk / Wazuh Manager Server (Ubuntu 24)
+| Direction | Service                   | Protocol / Port      | Source / Destination | Internal / External | Notes                        |
+| --------- | ------------------------- | -------------------- | -------------------- | ------------------- | ---------------------------- |
+| Inbound   | HTTP / HTTPS              | TCP 80 / 443         | Internal users       | Internal            | Webmail interface            |
+| Outbound  | POP3 / SMTP               | TCP 110 / 587        | Email Server         | Internal            | Email delivery and retrieval |
+| Outbound  | DNS                       | UDP/TCP 53           | Internal DNS         | Internal            | Service name resolution      |
+| Outbound  | Wazuh Agent Communication | TCP 1514 / TCP 55000 | Splunk/Wazuh Manager | Internal            | Send logs and alerts         |
+### Splunk / Wazuh Manager Server (Ubuntu 24)
 
 | Direction | Service                   | Protocol / Port      | Source / Destination              | Internal / External | Notes                               |
 | --------- | ------------------------- | -------------------- | --------------------------------- | ------------------- | ----------------------------------- |
@@ -351,3 +386,83 @@ if __name__ == "__main__":
 - Open any exported JSON file in a text editor to verify that it contains the `accessrules` array and policy details
 - Make sure all policies that exist in FMC are exported
 - Once verified, export the JSON files to NextCloud
+
+# Troubleshooting Internet Connectivity
+1. run `ipconfig /all`
+	- DNS server should be the Domain Controller's primary IP
+2. `ping 8.8.8.8`
+	- works: routing is fine, DNS issue
+	- fails: gateway or firewall issue
+3. `nslookup google.com`
+	- times out: DNS forwarders are missing
+	- Non-authoritative answer is fine
+4. `ipconfig`
+	- Ensure Default Gateway exists
+	- Must be valid Default Gateway (routes to internet)
+		- `<ip>.2`
+	- Ensure no Alternate DNS
+## Script for Testing
+This script tests for DNS, TCP/HTTPS, HTTP/HTTPS connectivity
+
+```PowerShell
+# -------------------------------
+# Internet Connectivity Test Script
+# For Domain Controllers / Windows Servers
+# -------------------------------
+
+# Target host for testing
+$HostName = "www.microsoft.com"
+$OutputFile = "$env:TEMP\test.ico"
+
+# -------------------------------
+# 1. DNS Resolution Test
+# -------------------------------
+Write-Host "=== DNS Resolution Test ==="
+try {
+    $ip = Resolve-DnsName $HostName -ErrorAction Stop
+    Write-Host "DNS OK: Resolved $HostName to $($ip.IPAddress)"
+} catch {
+    Write-Host "DNS FAILED: Could not resolve $HostName"
+    exit
+}
+
+# -------------------------------
+# 2. TCP / HTTPS Connectivity Test
+# -------------------------------
+Write-Host "`n=== TCP/HTTPS Connectivity Test ==="
+try {
+    $tcpTest = Test-NetConnection -ComputerName $HostName -Port 443
+    if ($tcpTest.TcpTestSucceeded) {
+        Write-Host "TCP/HTTPS OK: Port 443 reachable"
+    } else {
+        Write-Host "TCP/HTTPS FAILED: Port 443 not reachable"
+        exit
+    }
+} catch {
+    Write-Host "TCP Test ERROR: $_"
+    exit
+}
+
+# -------------------------------
+# 3. HTTP/HTTPS Download Test
+# -------------------------------
+Write-Host "`n=== HTTP/HTTPS Download Test ==="
+try {
+    Invoke-WebRequest -Uri "https://$HostName/favicon.ico" -OutFile $OutputFile -UseBasicParsing
+    Write-Host "HTTP(S) download OK: File saved to $OutputFile"
+} catch {
+    Write-Host "HTTP(S) download FAILED: $_"
+}
+
+```
+# Ensure Same Time zone
+In order to update group policy on Domain connected machines, their time zone must be within 5 minutes of the Domain Controller.
+Since our competition network is on Central Standard Time (CST), we will:
+-  On AD/Domain Controller, run:
+```PowerShell
+w32tm /config /manualpeerlist:"time.windows.com,0x9 pool.ntp.org,0x9" /syncfromflags:manual /reliable:YES /update
+```
+- If Domain Joined machine, run:
+```cmd
+tzutil "Central Standard Time"
+```
