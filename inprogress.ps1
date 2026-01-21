@@ -7,7 +7,7 @@
 # ----
 # Parameters
 # ----
-$CCDCPassword = "!Changeme123"
+$DSRMPassword = "!Changeme123"
 
 
 # ----
@@ -49,12 +49,12 @@ function Write-Status {
 # ----
 $ADAvailable = $false
 
-if (Get-InstalledModule -Name ActiveDirectory -ErrorAction SilentlyContinue) {
+$ADCmd = Get-Command Get-ADUser -ErrorAction SilentlyContinue
+if ($ADCmd -and $ADCmd.Source -eq "ActiveDirectory"){
     $ADAvailable = $true
-    Write-Status "Active Directory module detected" "Success"
+    Write-Status "Active Directory PowerShell module detected" "Success"
 } else {
-
-    Write-Status "Active Directory module not detected" "Info"
+    Write-Status "Active Directory PowerShell module not available" "Info"
 }
 
 # ----
@@ -89,9 +89,11 @@ $CCDCAccountName = "ccdcadmin"
 
 try {
     if ($ADAvailable) {
-        if (-not (Get-ADUser -Identity $CCDCAccountName -ErrorAction SilentlyContinue)) {
-            New-ADUser -Name $CCDCAccountName -SamAccountName $CCDCAccountName `
-                       -AccountPassword $SecureCCDCPassword -Enabled $true -PasswordNeverExpires $true
+        if (-not (Get-ADUser -Filter "SamAccountName -eq '$CCDCAccountName'" -ErrorAction SilentlyContinue)) {
+            Write-Host "Testing"
+            $DomainDN = (Get-ADDomain).DistinguishedName
+            $UserOU = "CN=Users," + $DomainDN
+            New-ADUser -Name $CCDCAccountName -SamAccountName $CCDCAccountName -AccountPassword $SecureCCDCPassword -Enabled $true -PasswordNeverExpires $true -Path $UserOU -PassThru
             $AdminGroups = @("Administrators","Domain Admins","Enterprise Admins","Group Policy Creator Owners","Schema Admins","DnsAdmins")
             foreach ($Group in $AdminGroups) { Add-ADGroupMember -Identity $Group -Members $CCDCAccountName -ErrorAction SilentlyContinue }
             Write-Status "AD account '$CCDCAccountName' created and added to admin groups" "Success"
@@ -109,6 +111,25 @@ try {
     }
 } catch {
     Write-Status "Failed to create $CCDCAccountName account: $_" "Error"
+}
+
+# ----
+# Change DSRM Password
+# ----
+if ($ADAvailable) {
+    try {
+        # Ensure $DSRMPassword is set at beginning of script
+        Write-Status "Changing DSRM password..." "Info"
+
+        "activate instance ntds;set dsrm password;reset password on server null;$DSRMPassword;$DSRMPassword;quit;quit" |
+            ntdsutil.exe
+
+        Write-Status "DSRM password successfully updated" "Success"
+    } catch {
+        Write-Status "Failed to update DSRM password: $_" "Error"
+    }
+} else {
+    Write-Status "Skipping DSRM password update because AD is not present" "Warning"
 }
 
 
@@ -384,5 +405,165 @@ try {
 } catch {
     Write-Status "Failed to configure UAC: $_" "Error"
 }
+
+# ============================================================
+# FULL END-TO-END WINDOWS / DC HARDENING (SERVICE-SAFE)
+# ============================================================
+# This is still baseline. It still needs to use the Write-Status function and confirm $ADAvailable for actions that require Domain Controller or Active Directory
+# ----
+# Require Elevation
+# ----
+if (([Security.Principal.WindowsPrincipal] `
+    [Security.Principal.WindowsIdentity]::GetCurrent()
+).IsInRole("Administrators")) {
+
+    Write-Status "Admin execution verified — proceeding with end-to-end encryption" "Success"
+
+    # ----
+    # Ensure Admin Script Execution
+    # ----
+    Set-ExecutionPolicy RemoteSigned -Scope LocalMachine -Force
+
+    $AdminScriptDirs = @(
+        "C:\Scripts",
+        "C:\Admin",
+        "C:\ProgramData\Scripts"
+    )
+
+    foreach ($Dir in $AdminScriptDirs) {
+        if (-not (Test-Path $Dir)) {
+            New-Item -ItemType Directory -Path $Dir -Force | Out-Null
+        }
+
+        icacls "$Dir" /inheritance:r | Out-Null
+        icacls "$Dir" /grant:r `
+            "SYSTEM:(OI)(CI)(F)" `
+            "Administrators:(OI)(CI)(F)" `
+            "Domain Admins:(OI)(CI)(F)" | Out-Null
+    }
+
+    # ----
+    # Secure User Home Directories
+    # ----
+    $HomeRoot = "C:\Users"
+
+    Get-ChildItem $HomeRoot -Directory | Where-Object {
+        $_.Name -notin @("Public","Default","Default User","All Users","Administrator")
+    } | ForEach-Object {
+
+        $Dir = $_.FullName
+        $User = $_.Name
+
+        icacls "$Dir" /inheritance:r | Out-Null
+        icacls "$Dir" /remove "Users" "Authenticated Users" "Everyone" | Out-Null
+        icacls "$Dir" /grant:r `
+            "SYSTEM:(OI)(CI)(F)" `
+            "Administrators:(OI)(CI)(F)" `
+            "$User:(OI)(CI)(F)" | Out-Null
+    }
+
+    # ----
+    # Secure Windows & Program Files
+    # ----
+    $SystemDirs = @(
+        "C:\Windows",
+        "C:\Program Files",
+        "C:\Program Files (x86)"
+    )
+
+    foreach ($Dir in $SystemDirs) {
+        if (Test-Path $Dir) {
+            icacls "$Dir" /inheritance:e | Out-Null
+            icacls "$Dir" /remove:g "Everyone" | Out-Null
+            icacls "$Dir" /grant:r `
+                "SYSTEM:(OI)(CI)(F)" `
+                "Administrators:(OI)(CI)(F)" `
+                "Users:(OI)(CI)(RX)" `
+                "Authenticated Users:(OI)(CI)(RX)" | Out-Null
+        }
+    }
+
+    # ----
+    # Secure System32 & Drivers
+    # ----
+    $CriticalDirs = @(
+        "C:\Windows\System32",
+        "C:\Windows\System32\drivers"
+    )
+
+    foreach ($Dir in $CriticalDirs) {
+        if (Test-Path $Dir) {
+            icacls "$Dir" /inheritance:e | Out-Null
+            icacls "$Dir" /remove:g "Users" "Authenticated Users" "Everyone" | Out-Null
+        }
+    }
+
+    # ----
+    # Secure Service Executable Paths
+    # ----
+    Get-CimInstance Win32_Service | ForEach-Object {
+        $Path = ($_.PathName -replace '"','').Split(" ")[0]
+        if (Test-Path $Path) {
+            icacls "$Path" /inheritance:e | Out-Null
+            icacls "$Path" /remove:g "Users" "Authenticated Users" "Everyone" | Out-Null
+        }
+    }
+
+    # ----
+    # Prevent Symlink / Junction Abuse
+    # ----
+    fsutil behavior set SymlinkEvaluation R2L:0 R2R:0 L2R:0 L2L:0 | Out-Null
+
+    # -----
+    # Enable File System Auditing for Failures
+    # ----
+    auditpol /set /subcategory:"File System" /success:disable /failure:enable | Out-Null
+
+    # ----
+    # PowerShell Constrained Language Mode for Non-Admins
+    # ----
+    reg add "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment" `
+        /v __PSLockdownPolicy /t REG_SZ /d 4 /f | Out-Null
+
+    # ----
+    # Enable Script Block Logging
+    # ----
+    reg add "HKLM\Software\Policies\Microsoft\Windows\PowerShell\ScriptBlockLogging" `
+        /v EnableScriptBlockLogging /t REG_DWORD /d 1 /f | Out-Null
+
+    # ----
+    # Applocker - Admin-safe Baseline
+    # ----
+    $Policy = New-AppLockerPolicy -DefaultRule -RuleType Executable,Script,MSI
+
+    $AdminRule = New-AppLockerFileRule `
+        -RuleType Executable `
+        -User "BUILTIN\Administrators" `
+        -Action Allow `
+        -Path "*"
+
+    $Policy.RuleCollections.ExecutableRuleCollection.Add($AdminRule)
+
+    Set-AppLockerPolicy -PolicyObject $Policy -Force
+    Set-AppLockerPolicy -EnforcementMode Enforced
+
+    # ----
+    # WDAC – Audit Mode Only
+    # ----
+    if (-not (Test-Path "C:\WDAC")) {
+        New-Item -ItemType Directory -Path "C:\WDAC" -Force | Out-Null
+    }
+
+    New-CIPolicy -Level Publisher -Fallback Hash -FilePath C:\WDAC\Audit.xml
+    ConvertFrom-CIPolicy C:\WDAC\Audit.xml C:\WDAC\Audit.bin
+
+    reg add "HKLM\SYSTEM\CurrentControlSet\Control\CI\Policy" `
+        /v VerifiedAndReputablePolicyState /t REG_DWORD /d 1 /f | Out-Null
+} else {
+    Write-Status "Admin execution verification failed - End-To-End hardening skipped" "Error"
+}
+
+Write-Status "Script Execution Finished" "Success"
+
 
 Stop-Transcript
