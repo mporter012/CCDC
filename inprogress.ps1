@@ -65,18 +65,6 @@ function Test-VCRedistributableInstalled {
     }
     return $false
 }
-# ----
-# Detects Joined Domain
-# ----
-$DomainJoined = $false
-if ((Get-CimInstance Win32_ComputerSystem).PartOfDomain) {
-    $Domain = (Get-CimInstance Win32_ComputerSystem).Domain
-    $SysVol = "\\$Domain\SYSVOL\$Domain"
-    Write-Status "Domain '$Domain' Detected" "Success"
-    $DomainJoined = $true
-} else {
-    Write-Status "Machine is not domain-joined" "Warning"
-}
 
 # ----
 # Detects Active Directory (If applicable)
@@ -89,6 +77,19 @@ if ($ADCmd -and $ADCmd.Source -eq "ActiveDirectory"){
     Write-Status "Active Directory PowerShell module detected" "Success"
 } else {
     Write-Status "Active Directory PowerShell module not available" "Info"
+}
+
+# ----
+# Detects Joined Domain
+# ----
+$DomainJoined = $false
+if ((Get-CimInstance Win32_ComputerSystem).PartOfDomain -or $ADAvailable) {
+    $Domain = (Get-CimInstance Win32_ComputerSystem).Domain
+    $SysVol = "\\$Domain\SYSVOL\$Domain"
+    Write-Status "Domain '$Domain' Detected" "Success"
+    $DomainJoined = $true
+} else {
+    Write-Status "Machine is not domain-joined" "Warning"
 }
 
 # ----
@@ -147,16 +148,29 @@ try {
     Write-Status "Failed to create $CCDCAccountName account: $_" "Error"
 }
 
+<#
 # ----
 # Change DSRM Password
 # ----
 if ($ADAvailable) {
     try {
-        # Ensure $DSRMPassword is set at beginning of script
         Write-Status "Changing DSRM password..." "Info"
 
-        "activate instance ntds;set dsrm password;reset password on server null;$DSRMPassword;$DSRMPassword;quit;quit" |
-            ntdsutil.exe
+        $NTDSInput = @"
+activate instance ntds
+set dsrm password
+reset password on server null
+$DSRMPassword
+$DSRMPassword
+quit
+quit
+"@
+
+        $Result = $NTDSInput | ntdsutil.exe
+
+        if ($Result -match "Error") {
+            throw "ntdsutil reported an error: $Result"
+        }
 
         Write-Status "DSRM password successfully updated" "Success"
     } catch {
@@ -166,6 +180,7 @@ if ($ADAvailable) {
     Write-Status "Skipping DSRM password update because AD is not present" "Warning"
 }
 
+#>
 
 # ----
 # Security Policies and Interactive Logon Banner
@@ -189,7 +204,7 @@ if ($ADAvailable) {
         if ($CurrentPolicy.MinPasswordLength -eq 14 -and $CurrentPolicy.ComplexityEnabled -eq $true -and $CurrentPolicy.MaxPasswordAge.Days -eq 90) {
             Write-Status "Domain password policy already compliant" "Info"
         } else {
-            Set-ADDefaultDomainPasswordPolicy -MinPasswordLength 14 -ComplexityEnabled $true -MaxPasswordAge (New-TimeSpan -Days 90) -ErrorAction Stop
+            Set-ADDefaultDomainPasswordPolicy -Identity $Domain -MinPasswordLength 14 -ComplexityEnabled $true -MaxPasswordAge (New-TimeSpan -Days 90) -ErrorAction Stop
             Write-Status "Domain password policy applied successfully" "Success"
         }
     } catch {
@@ -601,7 +616,7 @@ if ($DomainJoined){
         
         # ---- Ensure ClamAV Certificate Installed ----
         $CertPath = "C:\Program Files\ClamAV\certs\clamav.crt"
-        if (Test-Path($CertPath){
+        if (Test-Path($CertPath)){
             $Cert = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2
             $Cert.Import($CertPath)
     
@@ -614,7 +629,7 @@ if ($DomainJoined){
             Write-Host "clamav.crt has been added to the Trusted Root store" -ForegroundColor Green
         }
         # ---- Run FreshClam ----
-        if (Test-Path $FreshClamPath) {
+        if (Test-Path($FreshClamPath)) {
             Write-Status "Running freshclam.exe to update virus definitions..." "Info"
             try {
                 Start-Process -FilePath $FreshClamPath -ArgumentList "--quiet" -Wait
