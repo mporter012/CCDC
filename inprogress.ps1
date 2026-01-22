@@ -359,7 +359,6 @@ if ($ADAvailable) {
 # ----
 
 try {
-    # Explicitly define firewall profiles
     $FirewallProfiles = @("Domain","Private","Public")
 
     foreach ($Profile in $FirewallProfiles) {
@@ -599,7 +598,21 @@ if ($DomainJoined){
         } else {
             Write-Status "FreshClam log file already exists." "Info"
         }
-
+        
+        # ---- Ensure ClamAV Certificate Installed ----
+        $CertPath = "C:\Program Files\ClamAV\certs\clamav.crt"
+        if (Test-Path($CertPath){
+            $Cert = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2
+            $Cert.Import($CertPath)
+    
+            $Store = New-Object System.Security.Cryptography.X509Certificates.X509Store "Root","LocalMachine"
+            $Store.Open([System.Security.Cryptography.X509Certificates.OpenFlags]::ReadWrite)
+    
+            $Store.Add($Cert)
+            $Store.Close()
+    
+            Write-Host "clamav.crt has been added to the Trusted Root store" -ForegroundColor Green
+        }
         # ---- Run FreshClam ----
         if (Test-Path $FreshClamPath) {
             Write-Status "Running freshclam.exe to update virus definitions..." "Info"
@@ -612,6 +625,7 @@ if ($DomainJoined){
         } else {
             Write-Status "FreshClam executable not found. Cannot update virus database." "Error"
         }
+        Write-Status "Go to FreshClam.log to ensure no errors" "Warning"
     } else {
         Write-Status "Skipping ClamAV Deployment. Visual C++ Redistributables not installed" "Warning"
     }
