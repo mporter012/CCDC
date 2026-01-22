@@ -1,118 +1,91 @@
-# Ensure the script is running as Administrator
-$elevated = [bool]([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")
-if (-Not $elevated) {
-    Write-Host "Please run this script as an Administrator!" -ForegroundColor Red
-    Exit
+# ---- Logging Setup ----
+$LogDir = "C:\Logs"
+if (-not (Test-Path $LogDir)) {
+    New-Item -ItemType Directory -Path $LogDir -Force | Out-Null
 }
 
-# Disables the download progress bar
-# This significantly speeds up download speeds
-$ProgressPreference = 'SilentlyContinue'
-Write-Host "Disabled progress bar"
+$TimestampName = Get-Date -Format "HHmm"
+$TranscriptLog = Join-Path $LogDir "ClamScan_Transcript_$TimestampName.log"
+$FullScanResults = Join-Path $LogDir "full_scan_results_$TimestampName.txt"
+$DetectionResults = Join-Path $LogDir "detection_results_$TimestampName.txt"
 
-# Install ClamAV
-$installerPath = "$env:USERPROFILE\Downloads\clamav_installer.msi"
-if (-not (Test-Path $installerPath)){
-    Write-Host "Downloading Installer"
-    $clamavInstallerUrl = "https://www.clamav.net/downloads/production/clamav-0.105.2.win.x64.msi"
-    Invoke-WebRequest -Uri $clamavInstallerUrl -OutFile $InstallerPath
-}
-# Run ClamAV Installer
-Write-Host "Launching Installer"
+Start-Transcript -Path $TranscriptLog
 
-Start-Sleep -Seconds 3
+# ----
+# Status Function
+# ----
+function Write-Status {
+ param (
+    [Parameter(Mandatory)]
+    [string]$Message,
 
-Start-Process -FilePath $installerPath -Wait
-
-# Update ClamAV Virus Database
-Write-Host "Updating ClamAV Virus Database"
-
-# Define the path to the freshclam.conf file
-$freshClamConfigPath = "C:\Program Files\ClamAV\freshclam.conf"
-$clamDatabaseConfigPath = "C:\Program Files\ClamAV\clamd.conf"
-
-# If freshclam.conf does not exist, re-creates the file from the config examples
-if (-not (Test-Path $freshClamConfigPath)){
-    Write-Host "FreshClam Config Not Found. Generating New Config"
-    Copy-Item "C:\Program Files\ClamAV\conf_examples\freshclam.conf.sample" $freshClamConfigPath
-    Write-Host "Config Generated."
-    #Write-Host "Delete The Line That Says "Example" on Line 9. Then Save & Continue" -ForegroundColor Yellow
-    #write-exe .\freshclam.conf -Wait
-    Write-Host "Modifying the freshclam.conf file..." -ForegroundColor Green
-    $fileContent = Get-Content $freshClamConfigPath
-    #Remove the line containing "Example" and uncomment the UpdateLogFile line
-    $fileContent = $fileContent | ForEach-Object {
-        #Remove the line containing 'Example'
-        if ($_ -match "Example"){
-            $null #Exclude this line
-        }
-        # Uncomment the UpdateLogfile line
-        elseif ($_ -match "^#\s*UpdateLogFile") {
-            $_ -replace "^#\s*", ""
-        }
-        else {
-            $_
-        }
-    }
-    #Write the modified content back to the file
-    $fileContent | Set-Content $freshClamConfigPath
-
-    Write-Host "freshclam.conf has been modified successfully." -ForegroundColor Green
+    [ValidateSet("Info","Success","Warning","Error")]
+    [string]$Level = "Info"
+ ) 
+ 
+ $Timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+ $LogEntry = "$Timestamp [$Level] $Message"
+ switch ($Level) {
+    "Success" {Write-Host "[SUCCESS] $Message" -ForegroundColor Green}
+    "Warning" {Write-Host "[WARNING] $Message" -ForegroundColor Yellow}
+    "Error" {Write-Host "[ERROR] $Message" -ForegroundColor Red}
+    default {Write-Host "[INFO] $Message"}
+ }
 }
 
-# If clamd.conf does not exist, re-creates the file from the config samples
-if (-not (Test-Path $clamDatabaseConfigPath)){
-    Write-Host "clamd Config Not Found. Generating New Config"
-    Copy-Item "C:\Program Files\ClamAV\conf_examples\clamd.conf.sample" $clamDatabaseConfigPath
-    Write-Host "Config Generated."
-    Write-Host "Modifiying the clamd.conf file..." -ForegroundColor Green
-    $fileContent = Get-Content $clamDatabaseConfigPath
-    $fileContent = $fileContent | ForEach-Object {
-        if ($_ -match "Example") {
-            $null  # Skip lines with "Example"
-        }
-        # Uncomment specific logging options by removing the '#' from the beginning
-        elseif ($_ -match "^#LogTime") {
-            $_ -replace "^#LogTime", "LogTime"
-        }
-        elseif ($_ -match "^#LogVerbose") {
-            $_ -replace "^#LogVerbose", "LogVerbose"
-        }
-        elseif ($_ -match "^#ExtendedDetectionInfo") {
-            $_ -replace "^#ExtendedDetectionInfo", "ExtendedDetectionInfo"
-        }
-        elseif ($_ -match "^#DetectPUA") {
-            $_ -replace "^#DetectPUA", "DetectPUA"
-        }
-        elseif ($_ -match "^#HeuristicAlerts") {
-            $_ -replace "^#HeuristicAlerts", "HeuristicAlerts"
-        }
-        else {
-            $_  # Keep all other lines unchanged
-        }
-    }
+# ---- High-priority scan targets ----
+$ScanTargets = @(
+    "C:\Users",
+    "C:\Program Files",
+    "C:\Program Files (x86)",
+    "C:\Windows\Temp",
+    "$env:TEMP"
+)
 
-    $fileContent | Set-Content $clamDatabaseConfigPath
-    Write-Host "clamd.conf has been modified successfully." -ForegroundColor Green
-}
-$logFile = "C:\Program Files\ClamAV\freshclam.log"
-$user = "Administrator"
-# Create the freshclam log file if it does not already exist
-if (-not (Test-Path $logFile)){
-    New-Item -Path $logFile -ItemType File -Force | Out-Null
-    if (Test-Path $logFile){
-        Write-Host "Log File Created Successfully at $logFile" -ForegroundColor Green
-    }else{
-        Write-Host "Log File Failed Creation" -ForegroundColor Red
+Write-Status "Starting ClamScan on high-priority directories..." "Info"
+
+$ClamScanPath = "C:\Program Files\ClamAV\clamscan.exe"
+
+# ---- Scan each directory ----
+foreach ($Target in $ScanTargets) {
+    if (Test-Path $Target) {
+        Write-Status "Scanning $Target..." "Info"
+
+        & $ClamScanPath `
+            -r $Target `
+            --infected `
+            --quiet `
+            --exclude-dir="C:\\Users\\All Users" `
+            2>$null |
+            Tee-Object -FilePath $FullScanResults -Append |
+            Select-String -Pattern "FOUND$" |
+            Tee-Object -FilePath $DetectionResults -Append | Out-Null
+
+    } else {
+        Write-Status "$Target does not exist. Skipping." "Warning"
     }
 }
 
-# Run freshclam.exe
-$freshClam = "C:\Program Files\ClamAV\freshclam.exe"
-Write-Host "Running freshclam.exe"
-Start-Process "$freshClam" -Wait
-Write-Host "Directories Updated" -ForegroundColor Green
+Write-Status "ClamScan completed." "Success"
 
-# Run a ClamScan
-& "C:\Program Files\ClamAV\clamscan.exe" -r "C:\" 2>$null | Tee-Object -FilePath "$env:USERPROFILE\Documents\full_scan_results.txt" | Select-String -Pattern "FOUND$" 2>$null | Tee-Object -FilePath "$env:USERPROFILE\Documents\detection_results.txt" -ErrorAction SilentlyContinue
+# ---- Notify User if Detections Found ----
+if (Test-Path $DetectionResults) {
+    $Detections = Get-Content $DetectionResults | Where-Object { $_ -match "FOUND$" }
+    if ($Detections) {
+        # Windows popup notification
+        [System.Reflection.Assembly]::LoadWithPartialName("System.Windows.Forms") | Out-Null
+        [System.Windows.Forms.MessageBox]::Show(
+            "ClamAV detected threats on this system. Please check the log file:`n$LogFile",
+            "ClamAV Detection",
+            [System.Windows.Forms.MessageBoxButtons]::OK,
+            [System.Windows.Forms.MessageBoxIcon]::Warning
+        )
+        Write-Status "Detections found. User notified." "Warning"
+    } else {
+        Write-Status "No threats detected." "Success"
+    }
+} else {
+    Write-Status "No detection file created; assuming no threats found." "Info"
+}
 
+Stop-Transcript
