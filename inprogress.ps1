@@ -43,6 +43,28 @@ function Write-Status {
     default {Write-Host "[INFO] $Message"}
  }
 }
+
+# ----
+# Visual C++ Redist Check Function
+# ----
+function Test-VCRedistributableInstalled {
+    $UninstallKeys = @(
+        "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*",
+        "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*"
+    )
+    foreach ($Key in $UninstallKeys) {
+        try {
+            $Matches = Get-ItemProperty $Key -ErrorAction SilentlyContinue |
+                Where-Object { $_.DisplayName -match "Microsoft Visual C\+\+.*Redistributable" }
+            if ($Matches) {
+                return $true
+            }
+        } catch {
+            continue
+        }
+    }
+    return $false
+}
 # ----
 # Detects Joined Domain
 # ----
@@ -464,6 +486,137 @@ if ($DomainJoined) {
     }
 } else {
     Write-Status "Skipping Wazuh Deployment. Not Domain Joined" "Warning"
+}
+
+# ----
+# Install VC++ if uninstalled for ClamAV/FreshClam
+# ----
+if ($DomainJoined){
+    $VCRedistInstalled = $false
+    $VCRedistPath = "$Sysvol\Software\VC_redist.x64.exe"
+    if (-Not(Test-VCRedistributableInstalled)){
+        Write-Status "VC++ Redist not detected. Trying to install from SYSVOL" "Warning"
+        if (-Not(Test-Path $VCRedistPath)) {
+            Write-Status "VC++ Redist installer not found" "Error"
+        } else {
+            try {
+                Start-Process -FilePath $VCRedistPath -ArgumentList "/install /quiet /norestart" -Wait -PassThru
+                if (Test-VCRedistributableInstalled){
+                    Write-Status "Visual C++ Redistributables successfully installed" "Success"
+                    $VCRedistInstalled = $true
+                } else {
+                    Write-Status "Visual C++ Redistributables failed to install" "Error"
+                }
+            } catch {
+                Write-Status "Failed to install VC++ Redist: $_" "Error"
+            }
+        }
+    } else {
+        Write-Status "Visual C++ Redistributables already installed" "Info"
+        $VCRedistInstalled = $true
+    }
+} else {
+    Write-Status "Skipping check for C++ redist. Not Domain Joined" "Warning"
+}
+
+# ----
+# ClamAV Installation and Setup
+# ----
+if ($DomainJoined){
+    if ($VCRedistInstalled){
+        $InstallerPath = "$Sysvol\Software\clamav-1.5.1.win.x64.msi"
+        $FreshClamPath = "C:\Program Files\ClamAV\freshclam.exe"
+        $FreshClamConfig = "C:\Program Files\ClamAV\freshclam.conf"
+        $ClamDConfig = "C:\Program Files\ClamAV\clamd.conf"
+
+        # ---- Install ClamAV ----
+        if (-not (Test-Path $FreshClamPath)) {
+            Write-Status "ClamAV not detected. Installing from $InstallerPath" "Info"
+
+            if (-not (Test-Path $InstallerPath)) {
+                Write-Status "Installer not found at $InstallerPath. Cannot install ClamAV." "Error"
+                return
+            }
+
+            $InstallArgs = "/i `"$InstallerPath`" /qn"
+            try {
+                $InstallProc = Start-Process -FilePath "msiexec.exe" -ArgumentList $InstallArgs -Wait -PassThru
+                Write-Status "ClamAV installed successfully." "Success"
+            } catch {
+                Write-Status "ClamAV installation failed: $_" "Error"
+                return
+            }
+        } else {
+            Write-Status "ClamAV already installed. Skipping installation." "Info"
+        }
+
+        # ---- Configure freshclam.conf ----
+        if (-not (Test-Path $FreshClamConfig)) {
+            Write-Status "freshclam.conf not found. Creating from sample." "Info"
+            Copy-Item "C:\Program Files\ClamAV\conf_examples\freshclam.conf.sample" $FreshClamConfig -Force
+            $fileContent = Get-Content $FreshClamConfig
+            $fileContent = $fileContent | ForEach-Object {
+                if ($_ -match "Example") { $null }
+                elseif ($_ -match "^#\s*UpdateLogFile") { $_ -replace "^#\s*", "" }
+                else { $_ }
+            }
+            $fileContent | Set-Content $FreshClamConfig
+            Write-Status "freshclam.conf configured." "Success"
+        } else {
+            Write-Status "freshclam.conf already exists. Skipping configuration." "Info"
+        }
+
+        # ---- Configure clamd.conf ----
+        if (-not (Test-Path $ClamDConfig)) {
+            Write-Status "clamd.conf not found. Creating from sample." "Info"
+            Copy-Item "C:\Program Files\ClamAV\conf_examples\clamd.conf.sample" $ClamDConfig -Force
+
+            $fileContent = Get-Content $ClamDConfig
+            $fileContent = $fileContent | ForEach-Object {
+                if ($_ -match "Example") { $null }
+                elseif ($_ -match "^#LogTime") { $_ -replace "^#LogTime", "LogTime" }
+                elseif ($_ -match "^#LogVerbose") { $_ -replace "^#LogVerbose", "LogVerbose" }
+                elseif ($_ -match "^#ExtendedDetectionInfo") { $_ -replace "^#ExtendedDetectionInfo", "ExtendedDetectionInfo" }
+                elseif ($_ -match "^#DetectPUA") { $_ -replace "^#DetectPUA", "DetectPUA" }
+                elseif ($_ -match "^#HeuristicAlerts") { $_ -replace "^#HeuristicAlerts", "HeuristicAlerts" }
+                else { $_ }
+            }
+            $fileContent | Set-Content $ClamDConfig
+            Write-Status "clamd.conf configured." "Success"
+        } else {
+            Write-Status "clamd.conf already exists. Skipping configuration." "Info"
+        }
+
+        # ---- Create FreshClam Log File ----
+        $FreshClamLog = "C:\Program Files\ClamAV\freshclam.log"
+        if (-not (Test-Path $FreshClamLog)) {
+            try {
+                New-Item -Path $FreshClamLog -ItemType File -Force | Out-Null
+                Write-Status "FreshClam log file created at $FreshClamLog" "Success"
+            } catch {
+                Write-Status "Failed to create FreshClam log file: $_" "Error"
+            }
+        } else {
+            Write-Status "FreshClam log file already exists." "Info"
+        }
+
+        # ---- Run FreshClam ----
+        if (Test-Path $FreshClamPath) {
+            Write-Status "Running freshclam.exe to update virus definitions..." "Info"
+            try {
+                Start-Process -FilePath $FreshClamPath -ArgumentList "--quiet" -Wait
+                Write-Status "FreshClam update completed successfully." "Success"
+            } catch {
+                Write-Status "FreshClam failed to update virus database: $_" "Error"
+            }
+        } else {
+            Write-Status "FreshClam executable not found. Cannot update virus database." "Error"
+        }
+    } else {
+        Write-Status "Skipping ClamAV Deployment. Visual C++ Redistributables not installed" "Warning"
+    }
+} else {
+    Write-Status "Skipping ClamAV Deployment. Not Domain Joined" "Warning"
 }
 
 # ============================================================
