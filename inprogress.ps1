@@ -8,7 +8,7 @@
 # Parameters
 # ----
 $DSRMPassword = "!Changeme123"
-$WazuhManagerIP = "192.168.56.10" # Ensure that this is the IP of Splunk
+$WazuhManagerIP = "172.20.242.20" # Ensure that this is the IP of Splunk
 
 # ----
 # Logging
@@ -105,15 +105,20 @@ Write-Status "Detected OS: $OSCaption" "Info"
 if ($OSCaption -match "Windows Server 2019") {
     if ($ADAvailable) {
         $CCDCPassword = "Level-president00!"      # Password if Server 2019 with AD
+        $MachineName = "AD"
     } else {
         $CCDCPassword = "Purpose-brought15!"   # Password if Server 2019 without AD
+        $MachineName = "Web"
     }
 } elseif ($OSCaption -match "Windows Server 2022") {
     $CCDCPassword = "Washington-hours00!"            # Same for AD or local on 2022
+    $MachineName = "FTP"
 } elseif ($OSCaption -match "Windows 11") {
     $CCDCPassword = "Services-brought41!"             # Workstation Windows 11
+    $MachineName = "Wkst"
 } else {
     $CCDCPassword = "Cases-planning30!"              # Default fallback
+    $MachineName = "Unknown"
 } 
 
 # ----
@@ -648,6 +653,86 @@ if ($DomainJoined){
     Write-Status "Skipping ClamAV Deployment. Not Domain Joined" "Warning"
 }
 
+# ----
+# Inventory Report Generator (SYSVOL Friendly)
+# ----
+function Generate-InventoryReport {
+    if ($DomainJoined -and $SysVol) {
+        $SysVolPath = "\\$Domain\SYSVOL\$Domain\InventoryReports"
+        if (-not (Test-Path $SysVolPath)) {
+            try {
+                New-Item -Path $SysVolPath -ItemType Directory -Force | Out-Null
+                Write-Status "Created SYSVOL InventoryReports folder at $SysVolPath" "Success"
+            } catch {
+                Write-Status "Failed to create SYSVOL folder. Defaulting to C:\Logs" "Warning"
+                $SysVolPath = "C:\Logs"
+            }
+        }
+    } else {
+        $SysVolPath = "C:\Logs"
+    }
+
+    $ReportPath = Join-Path -Path $SysVolPath -ChildPath "${MachineName}Inventory.txt"
+    Write-Status "Generating inventory report at $ReportPath" "Info"
+
+    # System Info
+    $SystemName = $MachineName
+    $Platform = (Get-CimInstance Win32_OperatingSystem).Caption
+
+    # Local Accounts
+    try {
+        $LocalAccounts = Get-LocalUser | Select-Object -ExpandProperty Name
+    } catch {
+        $LocalAccounts = @("Could not retrieve local accounts")
+    }
+
+    # Domain Accounts (if AD available)
+    $DomainAccounts = @()
+    if ($ADAvailable) {
+        try {
+            $DomainAccounts = Get-ADUser -Filter * | Select-Object -ExpandProperty SamAccountName
+        } catch {
+            $DomainAccounts = @("Could not retrieve domain accounts")
+        }
+    }
+
+    # Services with status
+    try {
+        $Services = Get-Service | ForEach-Object { "$($_.Name) [$($_.Status)]" }
+    } catch {
+        $Services = @("Could not retrieve services")
+    }
+
+    # Build report
+    $ReportContent = @()
+    $ReportContent += "==== INVENTORY REPORT ===="
+    $ReportContent += "System Name: $SystemName"
+    $ReportContent += "Platform/OS: $Platform"
+    $ReportContent += ""
+    $ReportContent += "Local Accounts:"
+    foreach ($Account in $LocalAccounts) {
+        $ReportContent += " - $Account"
+    }
+    if ($DomainAccounts.Count -gt 0) {
+        $ReportContent += ""
+        $ReportContent += "Domain Accounts:"
+        foreach ($Account in $DomainAccounts) {
+            $ReportContent += " - $Account"
+        }
+    }
+    $ReportContent += ""
+    $ReportContent += "Services:"
+    foreach ($Service in $Services) {
+        $ReportContent += " - $Service"
+    }
+    $ReportContent += "========================="
+
+    $ReportContent | Out-File -FilePath $ReportPath -Encoding UTF8
+    Write-Status "Inventory report generated successfully" "Success"
+}
+
+# Generate the report
+Generate-InventoryReport
 # ============================================================
 # FULL END-TO-END WINDOWS / DC HARDENING (SERVICE-SAFE)
 # ============================================================
