@@ -553,7 +553,13 @@ if ($DomainJoined){
             Write-Status "ClamAV not detected. Installing from $InstallerPath" "Info"
 
             if (-not (Test-Path $InstallerPath)) {
-                Write-Status "Installer not found at $InstallerPath. Cannot install ClamAV." "Error"
+                Write-Status "Installer not found at $InstallerPath. Installing from internet." "Info"
+                try {
+                    $ClamAVUrl = "https://www.clamav.net/downloads/production/clamav-1.5.1.win.x64.msi"
+                    Invoke-WebRequest -Uri $ClamAVUrl -OutFile $InstallerPath -UseBasicParsing
+                    Write-Status "ClamAV installer downloaded successfully." "Success"
+            } catch {
+                Write-Status "Failed to download ClamAV installer: $_" "Error"
                 return
             }
 
@@ -646,8 +652,9 @@ if ($DomainJoined){
             Write-Status "FreshClam executable not found. Cannot update virus database." "Error"
         }
         Write-Status "Go to FreshClam.log to ensure no errors" "Warning"
-    } else {
-        Write-Status "Skipping ClamAV Deployment. Visual C++ Redistributables not installed" "Warning"
+        } else {
+            Write-Status "Skipping ClamAV Deployment. Visual C++ Redistributables not installed" "Warning"
+        }
     }
 } else {
     Write-Status "Skipping ClamAV Deployment. Not Domain Joined" "Warning"
